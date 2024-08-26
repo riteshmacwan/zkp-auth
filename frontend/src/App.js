@@ -1,59 +1,61 @@
 import React, { useState } from "react";
+import axios from "axios";
+import { generateProof } from "./utils/zkp-utils";
+import { poseidon } from "circomlib";
 
 function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [challenge, setChallenge] = useState(null);
-  const [response, setResponse] = useState("");
+  const [message, setMessage] = useState("");
+  const [isLogin, setIsLogin] = useState(false);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-  const startAuthentication = async () => {
-    const res = await fetch("http://localhost:3000/auth/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username }),
-    });
-    const data = await res.json();
-    setChallenge(data.challenge);
-  };
+    try {
+      if (isLogin) {
+        const storedHash = "/* fetch from server */";
+        const { proof, publicSignals } = await generateProof(
+          password,
+          storedHash
+        );
 
-  const completeAuthentication = async () => {
-    const proof = generateProof(password, challenge);
-    const res = await fetch("http://localhost:3000/auth/complete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, proof }),
-    });
-    const data = await res.json();
-    setResponse(data.message);
-  };
-
-  const generateProof = (password, challenge) => {
-    // Simulate proof generation using a hash function
-    return btoa(password + challenge);
+        await axios.post("http://localhost:3000/auth/login", {
+          username,
+          proof: JSON.stringify(proof),
+          publicSignals: JSON.stringify(publicSignals),
+        });
+      } else {
+        const hashedPassword = poseidon([password]);
+        await axios.post("http://localhost:3000/auth/register", {
+          username,
+          hashedPassword,
+        });
+      }
+      setMessage("Request successful");
+    } catch (error) {
+      setMessage("Error occurred");
+    }
   };
 
   return (
     <div>
-      <h1>ZKP Auth Demo</h1>
-      <input
-        type="text"
-        placeholder="Username"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-      <button onClick={startAuthentication}>Start Authentication</button>
-      {challenge && (
-        <button onClick={completeAuthentication}>
-          Complete Authentication
-        </button>
-      )}
-      {response && <p>{response}</p>}
+      <h2>{isLogin ? "Login" : "Register"}</h2>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button type="submit">{isLogin ? "Login" : "Register"}</button>
+      </form>
+      {message && <p>{message}</p>}
     </div>
   );
 }
